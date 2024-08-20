@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Círculo</title>
+  <link rel="stylesheet" href="imagenes/grafico-de-linea.png">
+
+  <style>
+    body {
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      margin: 0;
+      background-color: #ffffff;
+      font-family: Arial, sans-serif;
+    }
+
+    .modal {
+      display: none;
+      position: fixed;
+      z-index: 1;
+      left: 0;
+      top: 0;
+      width: 100%;
+      height: 100%;
+      background-color: rgba(0, 0, 0, 0.5); /* Fondo semitransparente */
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+
+    .modal-content {
+      background-color: #ffffff;
+      padding: 30px;
+      border-radius: 10px;
+      box-shadow: 0 0 20px rgba(0, 0, 0, 0.2);
+      text-align: center;
+      width: 80%; /* Ancho ajustado */
+      max-width: 500px; /* Ancho máximo */
+    }
+
+    .modal p {
+      margin-bottom: 15px;
+    }
+
+    .modal textarea {
+      width: 100%;
+      padding: 7px;
+      margin-bottom: 10px;
+      box-sizing: border-box;
+      resize: none;
+      border: 1px solid #ccc; /* Borde ligero */
+      border-radius: 5px;
+      font-family: Arial, sans-serif;
+      font-size: 14px;
+    }
+
+    .modal button {
+      padding: 10px 20px;
+      background-color: #272727;
+      color: #ffffff;
+      border: none;
+      cursor: pointer;
+      border-radius: 5px;
+      font-size: 16px;
+    }
+
+    canvas {
+      border-radius: 50%;
+      border: 1px solid #6c6a6a;
+      margin-top: 20px; /* Espacio superior */
+    }
+
+    .tooltip {
+      position: absolute;
+      background-color: #d03535;
+      color: #fff;
+      padding: 5px;
+      border-radius: 3px;
+      font-size: 10px;
+      pointer-events: none;
+      display: none;
+    }
+
+    .info {
+      margin-top: 20px;
+      text-align: center;
+      font-size: 16px;
+    }
+
+    .circle-text {
+      font: bold 14px Arial; /* Tamaño del texto reducido */
+    }
+
+    /* Estilos para el buscador */
+    .search-container {
+      position: absolute;
+      top: 20px;
+      right: 20px;
+      z-index: 1000;
+      display: flex;
+      align-items: center;
+    }
+
+    .search-container input[type=text] {
+      padding: 8px;
+      margin-right: 5px;
+      border: 1px solid #ccc;
+      border-radius: 5px;
+      font-size: 14px;
+    }
+
+    .search-container button {
+      padding: 8px 15px;
+      background-color: #272727;
+      color: #fff;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+      font-size: 14px;
+    }
+  </style>
+</head>
+<body>
+  <i class="fas fa-circle"></i>
+
+  <div class="modal" id="modal">
+    <div class="modal-content">
+      <h2>Ingresar texto :</h2>
+      <textarea id="palabrasInput" rows="5" placeholder="Escribe aquí letras del abecedario, espacios, tildes y comas"></textarea>
+      <br>
+      <button onclick="distribuirLetras()">Aceptar</button>
+    </div>
+  </div>
+  <canvas id="circleCanvas"></canvas>
+  <div class="tooltip" id="tooltip"></div>
+  <div class="info" id="info"></div>
+  <div class="search-container">
+    <input type="text" id="searchInput" placeholder="Buscar...">
+    <button onclick="buscar()">Buscar</button>
+  </div>
+  <script>
+    const cellsPerRing = 12;
+    const rings = 34; // Número de anillos
+    const centralRadius = 20; // Ajustar este valor para hacer el radio central más pequeño
+    const angleStep = (2 * Math.PI) / cellsPerRing; // Paso angular entre las celdas
+
+    let letrasValidas = [];
+    let cellPositions = [];
+
+    // Función para abrir la modal al cargar la página
+    function openModal() {
+      document.getElementById('modal').style.display = 'flex'; // Cambiado a 'flex' para centrar
+      document.getElementById("palabrasInput").focus();
+    }
+
+    // Función para distribuir letras ingresadas
+    function distribuirLetras() {
+      const palabrasInput = document.getElementById("palabrasInput").value.trim();
+
+      if (/^[a-zA-Z\sáéíóúüÁÉÍÓÚÜ,1234567890]*$/.test(palabrasInput)) {
+        letrasValidas = palabrasInput.match(/[a-zA-ZáéíóúüÁÉÍÓÚÜ123456789]/g); // Obtener todas las letras del abecedario ingresadas
+        drawCircle();
+        closeModal();
+      } else {
+        alert("Por favor, ingresa solo letras del abecedario");
+      }
+    }
+
+    // Función para cerrar la modal
+    function closeModal() {
+      document.getElementById('modal').style.display = 'none';
+    }
+
+    // Función para dibujar el círculo y las letras en el Canvas
+    function drawCircle() {
+      const canvas = document.getElementById('circleCanvas');
+      const context = canvas.getContext('2d');
+
+      const centerX = canvas.width / 2;
+      const centerY = canvas.height / 2;
+      const maxRadius = Math.min(centerX, centerY);
+      const ringHeight = (maxRadius - centralRadius) / rings;
+
+      context.clearRect(0, 0, canvas.width, canvas.height);
+      context.lineWidth = 1; // Grosor de las líneas de las celdas
+      context.strokeStyle = '#cccccc';
+      cellPositions = [];
+
+      for (let ring = 0; ring < rings; ring++) {
+        const radiusInner = centralRadius + ringHeight * ring;
+        const radiusOuter = radiusInner + ringHeight;
+
+        for (let c = 0; c < cellsPerRing; c++) {
+          const startAngle = angleStep * c - Math.PI / 2; // Ajuste para iniciar en el eje Y
+          const endAngle = startAngle + angleStep;
+
+          // Dibujar la casilla circular
+          context.beginPath();
+          context.arc(centerX, centerY, radiusOuter, startAngle, endAngle);
+          context.arc(centerX, centerY, radiusInner, endAngle, startAngle, true);
+          context.closePath();
+          context.stroke();
+
+          // Calcular el ángulo medio para colocar la letra
+          const midAngle = (startAngle + endAngle) / 2;
+          const textRadius = (radiusInner + radiusOuter) / 2;
+          const x = centerX + textRadius * Math.cos(midAngle);
+          const y = centerY + textRadius * Math.sin(midAngle);
+
+          // Colocar la letra en el centro de la casilla circular
+          const letraIndex = ring * cellsPerRing + c;
+          if (letraIndex < letrasValidas.length) {
+            context.font = 'bold 10px Verdana'; // Tamaño del texto reducido
+            context.textAlign = 'center';
+            context.textBaseline = 'middle';
+            context.fillStyle = '#000000'; // Color inicial de la letra
+            context.fillText(letrasValidas[letraIndex].toUpperCase(), x, y);
+          }
+
+          // Guardar las posiciones de las celdas
+          cellPositions.push({ ring, cell: c, x, y, radiusInner, radiusOuter, startAngle, endAngle, letra: letrasValidas[letraIndex] });
+        }
+      }
+    }
+
+    // Función para buscar posiciones de celdas según el input
+    function buscar() {
+      const searchInput = document.getElementById("searchInput").value.trim();
+
+      // Limpiar estilos previos de búsqueda
+      resetSearch();
+
+      if (searchInput === "") {
+        return;
+      }
+
+      const inputs = searchInput.split(',');
+      const cellsToHighlight = [];
+
+      inputs.forEach(input => {
+        if (/^\d+$/.test(input)) {
+          const cellIndex = parseInt(input.trim());
+          cellsToHighlight.push(cellIndex);
+        } else if (/^[a-zA-ZáéíóúüÁÉÍÓÚÜ]$/.test(input)) {
+          const letra = input.trim().toLowerCase();
+          cellPositions.forEach(cell => {
+            if (cell.letra && cell.letra.toLowerCase() === letra) {
+              cellsToHighlight.push(cell);
+            }
+          });
+        }
+      });
+
+      // Resaltar las celdas encontradas
+      highlightCells(cellsToHighlight);
+    }
+
+    // Función para resaltar celdas encontradas
+    function highlightCells(cells) {
+      const canvas = document.getElementById('circleCanvas');
+      const context = canvas.getContext('2d');
+
+      cells.forEach(cell => {
+        if (typeof cell === 'number') {
+          const index = cell;
+          if (index >= 0 && index < cellPositions.length) {
+            const { startAngle, endAngle, radiusInner, radiusOuter } = cellPositions[index];
+            context.fillStyle = 'rgba(255, 165, 0, 0.3)'; // Color de resaltado
+            context.beginPath();
+            context.arc(canvas.width / 2, canvas.height / 2, radiusOuter, startAngle, endAngle);
+            context.arc(canvas.width / 2, canvas.height / 2, radiusInner, endAngle, startAngle, true);
+            context.closePath();
+            context.fill();
+
+            // Dibujar la letra en color de resaltado
+            const { x, y } = cellPositions[index];
+            context.fillStyle = '#ff0000'; // Color de la letra resaltada
+            context.fillText(cellPositions[index].letra.toUpperCase(), x, y);
+          }
+        } else if (typeof cell === 'object') {
+          const { startAngle, endAngle, radiusInner, radiusOuter, x, y } = cell;
+          context.fillStyle = 'rgba(255, 165, 0, 0.3)'; // Color de resaltado
+          context.beginPath();
+          context.arc(canvas.width / 2, canvas.height / 2, radiusOuter, startAngle, endAngle);
+          context.arc(canvas.width / 2, canvas.height / 2, radiusInner, endAngle, startAngle, true);
+          context.closePath();
+          context.fill();
+
+          // Dibujar la letra en color de resaltado
+          context.fillStyle = '#ff0000'; // Color de la letra resaltada
+          context.fillText(cell.letra.toUpperCase(), x, y);
+        }
+      });
+    }
+
+    // Función para limpiar los estilos de búsqueda previos
+    function resetSearch() {
+      const canvas = document.getElementById('circleCanvas');
+      const context = canvas.getContext('2d');
+      context.clearRect(0, 0, canvas.width, canvas.height);
+      drawCircle();
+    }
+
+    // Función para mostrar el tooltip y la información al pasar el mouse
+    function showTooltip(event) {
+      const canvas = document.getElementById('circleCanvas');
+      const tooltip = document.getElementById('tooltip');
+      const info = document.getElementById('info');
+      const rect = canvas.getBoundingClientRect();
+      const mouseX = event.clientX - rect.left;
+      const mouseY = event.clientY - rect.top;
+
+      for (const cell of cellPositions) {
+        const { ring, cell: cellIndex, x, y, radiusInner, radiusOuter, startAngle, endAngle, letra } = cell;
+        const dx = mouseX - (canvas.width / 2);
+        const dy = mouseY - (canvas.height / 2);
+        const distance = Math.sqrt(dx * dx + dy * dy);
+        let angle = Math.atan2(dy, dx);
+        
+        if (angle < -Math.PI / 2) {
+          angle += 2 * Math.PI; // Ajustar el ángulo para que esté en el rango correcto
+        }
+
+        if (distance >= radiusInner && distance <= radiusOuter && angle >= startAngle && angle < endAngle) {
+          tooltip.style.left = `${event.clientX + 10}px`;
+          tooltip.style.top = `${event.clientY + 10}px`;
+          tooltip.textContent = `Ring: ${ring}, Cell: ${cellIndex}`;
+          tooltip.style.display = 'block';
+          info.textContent = `Ring: ${ring}, Cell: ${cellIndex}, Letra: ${letra || ''}`;
+          return;
+        }
+      }
+
+      tooltip.style.display = 'none';
+      info.textContent = '';
+    }
+
+    // Llamamos a la función al cargar la página
+    document.addEventListener('DOMContentLoaded', function() {
+      const canvas = document.getElementById('circleCanvas');
+      canvas.width = canvas.height = Math.min(window.innerWidth * 0.7, 800); // Tamaño máximo adaptativo
+      canvas.addEventListener('mousemove', showTooltip);
+      drawCircle();
+      openModal();
+    });
+  </script>
+</body>
+</html>
+
+
+
+
